@@ -1,0 +1,59 @@
+name: Update 5Metrics Server Counts
+
+on:
+  schedule:
+    - cron: "0 1 * * *"  # Daily at 1AM UTC
+  workflow_dispatch:
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Prepare stats directory
+        run: mkdir -p stats
+
+      - name: Fetch server + rankChange for each resource
+        run: |
+          while IFS= read -r resource; do
+            echo "Fetching $resource..."
+            curl -s -X POST https://api.5metrics.dev/getResource \
+              -H "Content-Type: application/json" \
+              -H "Origin: https://5metrics.dev" \
+              -d "{\"resource\":\"$resource\"}" -o temp.json
+
+            if jq -e '.success' temp.json > /dev/null; then
+              servers=$(jq '.resource.servers' temp.json)
+              change=$(jq '.resource.serverRankChange' temp.json)
+
+            if [ "$change" -gt 0 ]; then
+              direction="up"
+            elif [ "$change" -lt 0 ]; then
+              direction="down"
+            else
+              direction="none"
+            fi
+
+            echo "$servers|$direction" > "stats/${resource}.txt"
+
+            else
+              echo "0 -" > "stats/${resource}.txt"
+              echo "⚠️ Failed to fetch $resource"
+            fi
+          done < resources.txt
+
+      - name: Commit and push if changed
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add stats/*.txt
+          git diff --cached --quiet || git commit -m "Update server stats with rank change"
+          git push
