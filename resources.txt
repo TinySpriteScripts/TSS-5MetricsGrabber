@@ -30,3 +30,4 @@ tss-blipcreator
 tss-gangs
 tss-medo
 tss-weedshop
+tss-wheelchair
